@@ -1,0 +1,19 @@
+{
+  "name": "claude-plan-pane",
+  "owner": {
+    "name": "Ellen Chen",
+    "url": "https://github.com/ellenrchen"
+  },
+  "plugins": [
+    {
+      "name": "plan-pane",
+      "source": "./",
+      "description": "See Claude's plan in a side pane while it writes it, with a comment button on every section",
+      "category": "productivity",
+      "tags": ["plan", "plan-mode", "pane", "review", "mod", "terminal"]
+    }
+  ],
+  "metadata": {
+    "description": "See Claude's plan in a side pane while it writes it"
+  }
+}

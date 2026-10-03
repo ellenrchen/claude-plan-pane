@@ -1,0 +1,14 @@
+{
+  "name": "plan-pane",
+  "description": "See Claude's plan in a side pane while it writes it, with a comment button on every section",
+  "version": "0.1.0",
+  "author": {
+    "name": "Ellen Chen",
+    "url": "https://github.com/ellenrchen"
+  },
+  "homepage": "https://github.com/ellenrchen/claude-plan-pane",
+  "repository": "https://github.com/ellenrchen/claude-plan-pane",
+  "license": "MIT",
+  "keywords": ["plan", "plan-mode", "pane", "review", "mod", "terminal", "claude-code"],
+  "types": "./types/index.d.ts"
+}
