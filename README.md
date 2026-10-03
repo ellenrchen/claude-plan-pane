@@ -2,7 +2,10 @@
 
 A Claude Code mod that shows Claude's plan in a side pane as it writes it in plan mode, and lets you approve it right there. The plan stays on the right, your conversation stays on the left, and the full-width "Ready to code?" dialog never takes over the screen.
 
+
 [![License](https://img.shields.io/github/license/ellenrchen/claude-plan-pane)](LICENSE)
+
+<img width="1411" height="845" alt="image" src="https://github.com/user-attachments/assets/f824435b-1edd-4e26-80ea-21a7456996cc" />
 
 ## Install
 
