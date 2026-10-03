@@ -1,12 +1,23 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlanDoc } from '../types'
+import type { PlanDoc, PlanPhase } from '../types'
 import { PLAN_FILE, quote, toSections } from './sections'
 import type { Section } from './sections'
 
 const PANE = 'plan'
 const plan = atom({ plugin: 'plan-pane', key: 'plan' } as const, null as PlanDoc | null)
+const phase = atom({ plugin: 'plan-pane', key: 'phase' } as const, 'drafting' as PlanPhase)
+
+const APPROVED_PROMPT = 'Approved. Exit plan mode and start executing the plan.'
+const AWAITING_REVIEW =
+  'The user is reviewing this plan in the plan pane. End your turn now and wait for them. ' +
+  'Do not call ExitPlanMode again until they approve.'
+const BADGE: Record<PlanPhase, { text: string; color: string }> = {
+  drafting: { text: 'drafting', color: 'gray' },
+  ready: { text: 'ready to execute', color: 'yellow' },
+  approved: { text: 'approved', color: 'green' },
+}
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -29,22 +40,49 @@ export const register: Register = on => {
       if (!path || !PLAN_FILE.test(path) || ran.isError) return ran
       const text = await $.fs.read(path)
       await update($, plan, () => ({ path, text, updatedAt: Date.now() }))
+      await update($, phase, () => 'drafting')
       const opened = await $.ui.open({ id: PANE, title: 'Plan' })
       if (!opened.isPlaced) $.ui.toast('Plan ready: run /plan-pane to view it beside the session')
       return ran
     })
   }
 
+  // Approval happens in the pane, so the full-width dialog stays closed.
+  on('tool.call', { tool: 'ExitPlanMode' }, async ($, e, next) => {
+    const doc = await read($, plan)
+    if (!doc) return next(e)
+    if ((await read($, phase)) === 'approved') return next(e)
+    const text = await $.fs.read(doc.path)
+    await update($, plan, () => ({ ...doc, text, updatedAt: Date.now() }))
+    await update($, phase, () => 'ready')
+    const opened = await $.ui.open({ id: PANE, title: 'Plan', focus: true })
+    if (!opened.isPlaced) return next(e)
+    return { deny: AWAITING_REVIEW }
+  })
+
+  on('tool.check', { tool: 'ExitPlanMode' }, async ($, e, next) =>
+    (await read($, phase)) === 'approved' ? { decision: 'allow' } : next(e))
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Markdown } = $.ui.resolve(e)
     const doc = await read($, plan)
     if (!doc) return <Text dimColor>No plan yet. It appears here once Claude writes one in plan mode.</Text>
 
+    const current = await read($, phase)
     const all = toSections(doc.text)
     const intro = all[0] && all[0].level <= 1 ? all[0] : undefined
     const sections = intro ? all.slice(1) : all
     const width = Math.max(20, e.props.bodyColumns - 2)
     const body = (s: Section) => s.lines.join('\n').trim()
+
+    const approve = async () => {
+      await update($, phase, () => 'approved')
+      void $.prompt.submit({ text: APPROVED_PROMPT, asUser: true })
+    }
+    const requestChanges = async () => {
+      await update($, phase, () => 'drafting')
+      await $.prompt.fill({ text: 'Change the plan: ', mode: 'append' })
+    }
 
     return (
       <Box flexDirection="column" width={width}>
@@ -52,6 +90,14 @@ export const register: Register = on => {
           <Text bold wrap="truncate">{intro?.heading || doc.path.split('/').pop()}</Text>
           <Button key="close" plain dimColor onPress={() => $.ui.close({ id: PANE })}>close</Button>
         </Box>
+        <Text key="phase" color={BADGE[current].color}>{BADGE[current].text}</Text>
+        {current === 'ready' ? (
+          <Box flexDirection="row" marginTop={1}>
+            <Button key="approve" hotkey="a" onPress={approve}>Approve and execute</Button>
+            <Text> </Text>
+            <Button key="changes" hotkey="r" dimColor onPress={requestChanges}>Request changes</Button>
+          </Box>
+        ) : null}
         {intro && body(intro) ? <Markdown text={body(intro)} dimColor /> : null}
         {sections.map((s, i) => {
           const hotkey = i < 9 ? String(i + 1) : undefined

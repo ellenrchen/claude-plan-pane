@@ -1,6 +1,6 @@
 # Claude Plan Pane
 
-A Claude Code mod that shows Claude's plan in a side pane as it writes it in plan mode, with a comment button on every section so you can give feedback on one part without retyping it.
+A Claude Code mod that shows Claude's plan in a side pane as it writes it in plan mode, and lets you approve it right there. The plan stays on the right, your conversation stays on the left, and the full-width "Ready to code?" dialog never takes over the screen.
 
 [![License](https://img.shields.io/github/license/ellenrchen/claude-plan-pane)](LICENSE)
 
@@ -33,6 +33,10 @@ Then run `/reload-plugins` inside a session, or start a new one.
 ```
 ╭─ Plan ─────────────────────────────────────╮
 │ Document upload demo                 close │
+│ ready to execute                           │
+│                                            │
+│ [Approve and execute]  [Request changes]   │
+│                                            │
 │ Ship a working demo of document upload.    │
 │                                            │
 │ Context                            comment │
@@ -46,6 +50,7 @@ Then run `/reload-plugins` inside a session, or start a new one.
 
 - **Opens on its own.** The pane opens the moment Claude writes or edits a plan. If your terminal is too narrow to fit it beside the session, a toast tells you to run `/plan-pane`.
 - **Stays in sync.** Every edit Claude makes to the plan redraws the pane.
+- **Approve from the pane.** When Claude finishes planning, the pane shows **Approve and execute** (`a`) and **Request changes** (`r`) instead of opening the full-screen approval dialog. Approving sends "Approved" and Claude leaves plan mode and starts working. Typing feedback in the prompt works too: Claude stays in plan mode and revises.
 - **Comment on a section.** Press `comment` (or `1` to `9` while the pane has focus) to quote that section's heading into your prompt, then type your feedback under it.
 - **Starts empty.** A new session shows nothing until Claude writes a plan, so you never see a stale plan from an earlier session.
 
@@ -58,10 +63,13 @@ Claude Code writes plans as Markdown files in `~/.claude/plans/`. Claude Plan Pa
 1. It watches Claude's `Write` and `Edit` tool calls. When one succeeds on a file in `~/.claude/plans/`, it reads that file and keeps it in session state.
 2. It splits the plan into sections at the `#` to `####` headings and draws them in a pane with Claude Code's `Markdown` element.
 3. A section's `comment` button adds `> <heading>` to the end of your prompt.
+4. When Claude calls `ExitPlanMode`, the mod holds the call back and tells Claude to wait for you, so the approval dialog doesn't open. Pressing **Approve** marks the plan approved and sends a prompt; Claude calls `ExitPlanMode` again, and the mod lets that call through, so Claude leaves plan mode as usual.
+
+If the pane can't be shown (for example, the terminal is too narrow to place it), the mod steps aside and Claude Code's own approval dialog appears as normal. Approving in the pane returns you to the permission mode you were in before plan mode; the dialog's "switch to bypass permissions" choice isn't offered there.
 
 ## Security
 
-Claude Plan Pane is local-only. It makes no network requests and writes no files. It only reads plan files that Claude itself just wrote in `~/.claude/plans/`.
+Claude Plan Pane is local-only. It makes no network requests and writes no files. It only reads plan files that Claude itself just wrote in `~/.claude/plans/`. It never approves a plan on its own: `ExitPlanMode` only goes through after you press **Approve** in the pane.
 
 Run `claude plugin validate` on the repo to see every event it hooks and every call it makes.
 
