@@ -56,6 +56,19 @@ Then run `/reload-plugins` inside a session, or start a new one.
 
 Run `/plan-pane` at any time to bring the pane back after closing it.
 
+## Layout: Prompt on the Left, Plan on the Right
+
+The pane docks beside the conversation only in Claude Code's fullscreen layout. Elsewhere it sits above the prompt instead. To get the conversation and prompt on the left with the plan on the right:
+
+1. Turn on the fullscreen layout by adding this to `~/.claude/settings.json`, then start a new session:
+
+   ```json
+   { "tui": "fullscreen" }
+   ```
+
+2. Make your terminal at least 110 columns wide; 144 or more lets the pane open on its own the moment a plan is written. Below that, run `/plan-pane` to open it.
+3. Enter plan mode (shift+tab) and ask Claude for a plan. Keep typing in the prompt on the left: feedback, questions, or a `comment` quote from the pane. When the plan is ready, approve it from the pane on the right.
+
 ## How It Works
 
 Claude Code writes plans as Markdown files in `~/.claude/plans/`. Claude Plan Pane is a [mod](https://code.claude.com/docs/en/plugins/mods/overview):
@@ -76,7 +89,7 @@ Run `claude plugin validate` on the repo to see every event it hooks and every c
 ## Requirements
 
 - Claude Code v2.1.287 or later (mods support)
-- The pane docks beside the transcript in the fullscreen terminal; elsewhere it sits above the prompt
+- The fullscreen layout and a terminal at least 110 columns wide, for the side-by-side view (see [Layout](#layout-prompt-on-the-left-plan-on-the-right))
 
 ## Troubleshooting
 
