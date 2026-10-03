@@ -1,4 +1,4 @@
-export type PlanDoc = { path: string; text: string; updatedAt: number }
+export type PlanDoc = { path: string; text: string; updatedAt: number; revision: number }
 export type PlanPhase = 'drafting' | 'ready' | 'approved'
 
 declare module 'claude-code' {

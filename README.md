@@ -81,6 +81,8 @@ Claude Code writes plans as Markdown files in `~/.claude/plans/`. Claude Plan Pa
 3. A section's `comment` button adds `> <heading>` to the end of your prompt.
 4. When Claude calls `ExitPlanMode`, the mod holds the call back and tells Claude to wait for you, so the approval dialog doesn't open. Pressing **Approve** marks the plan approved and sends a prompt; Claude calls `ExitPlanMode` again, and the mod lets that call through, so Claude leaves plan mode as usual.
 
+Approval applies only to the reviewed revision and is consumed after one exit attempt. Starting a new planning cycle or changing the plan requires another review. Other tools keep their normal permission checks.
+
 If the pane can't be shown (for example, the terminal is too narrow to place it), the mod steps aside and Claude Code's own approval dialog appears as normal. The dialog's extra choices, like switching to bypass permissions, aren't offered in the pane; pick a mode with shift+tab after approving if you need one.
 
 ## Security

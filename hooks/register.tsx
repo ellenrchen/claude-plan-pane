@@ -19,6 +19,19 @@ const BADGE: Record<PlanPhase, { text: string; color: string }> = {
   approved: { text: 'approved', color: 'green' },
 }
 
+// Re-read at both permission checking and execution: edits outside the watched
+// tools must not inherit approval of the text previously displayed in the pane.
+async function isApproved($: Parameters<typeof read>[0], doc: PlanDoc | null) {
+  if (!doc || (await read($, phase)) !== 'approved') return false
+  try {
+    if ((await $.fs.read(doc.path)) === doc.text) return true
+  } catch {
+    // A missing or unreadable plan cannot retain approval.
+  }
+  await update($, phase, () => 'drafting')
+  return false
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -39,7 +52,7 @@ export const register: Register = on => {
       const path: string | undefined = e.file_path
       if (!path || !PLAN_FILE.test(path) || ran.isError) return ran
       const text = await $.fs.read(path)
-      await update($, plan, () => ({ path, text, updatedAt: Date.now() }))
+      await update($, plan, previous => ({ path, text, updatedAt: Date.now(), revision: (previous?.revision ?? 0) + 1 }))
       await update($, phase, () => 'drafting')
       const opened = await $.ui.open({ id: PANE, title: 'Plan' })
       if (!opened.isPlaced) $.ui.toast('Plan ready: run /plan-pane to view it beside the session')
@@ -47,13 +60,26 @@ export const register: Register = on => {
     })
   }
 
+  on('tool.call', { tool: 'EnterPlanMode' }, async ($, e, next) => {
+    await update($, phase, () => 'drafting')
+    return next(e)
+  })
+
   // Approval happens in the pane, so the full-width dialog stays closed.
   on('tool.call', { tool: 'ExitPlanMode' }, async ($, e, next) => {
     const doc = await read($, plan)
     if (!doc) return next(e)
-    if ((await read($, phase)) === 'approved') return next(e)
+    if (await isApproved($, doc)) {
+      // Keep approval available to downstream permission checks, then consume it
+      // even when exit fails. Retrying requires a fresh review.
+      try {
+        return await next(e)
+      } finally {
+        await update($, phase, () => 'drafting')
+      }
+    }
     const text = await $.fs.read(doc.path)
-    await update($, plan, () => ({ ...doc, text, updatedAt: Date.now() }))
+    await update($, plan, () => ({ ...doc, text, updatedAt: Date.now(), revision: (doc.revision ?? 0) + 1 }))
     await update($, phase, () => 'ready')
     const opened = await $.ui.open({ id: PANE, title: 'Plan', focus: true })
     if (!opened.isPlaced) return next(e)
@@ -61,7 +87,7 @@ export const register: Register = on => {
   })
 
   on('tool.check', { tool: 'ExitPlanMode' }, async ($, e, next) =>
-    (await read($, phase)) === 'approved' ? { decision: 'allow' } : next(e))
+    (await isApproved($, await read($, plan))) ? { decision: 'allow' } : next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Markdown } = $.ui.resolve(e)
@@ -76,6 +102,21 @@ export const register: Register = on => {
     const body = (s: Section) => s.lines.join('\n').trim()
 
     const approve = async () => {
+      const latest = await read($, plan)
+      if ((await read($, phase)) !== 'ready' || !latest || latest.revision !== doc.revision) return
+      // An old rendered button cannot approve a newer review or an external edit.
+      let text: string
+      try {
+        text = await $.fs.read(doc.path)
+      } catch {
+        await update($, phase, () => 'drafting')
+        return
+      }
+      if (text !== doc.text) {
+        await update($, plan, () => ({ ...doc, text, updatedAt: Date.now(), revision: (doc.revision ?? 0) + 1 }))
+        await update($, phase, () => 'drafting')
+        return
+      }
       await update($, phase, () => 'approved')
       void $.prompt.submit({ text: APPROVED_PROMPT, asUser: true })
     }

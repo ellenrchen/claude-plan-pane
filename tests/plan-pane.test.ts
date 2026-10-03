@@ -134,3 +134,96 @@ test('requesting changes keeps Claude in plan mode', async ($, on) => {
   await ui.unmount()
   expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).not.toBe('allow')
 })
+
+// These exercise the registered hooks with the real mod test runner; filesystem,
+// UI placement, prompts, and downstream tools are mocked.
+for (const scenario of ['consumed exit', 'new cycle', 'external edit', 'watched edit', 'ordinary permissions'] as const) {
+  test(`approval is scoped to the current review: ${scenario}`, async ($, on) => {
+    let text = PLAN
+    let exited = 0
+    on('fs.read', () => ({ value: text }))
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('tool.check', () => ({ decision: 'ask' }))
+    on('tool.call', ($, e) => {
+      if (e.tool === 'ExitPlanMode') exited++
+      return { result: { text: 'ok', isError: false } }
+    })
+    on('prompt.submit', ($, e) => ({ text: e.text }))
+    await $.tool.call({ tool: 'Write', file_path: PLAN_PATH, content: text } as any)
+    await $.tool.call({ tool: 'ExitPlanMode' } as any)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    await ui.press({ key: 'approve' })
+    await ui.unmount()
+    expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).toBe('allow')
+
+    if (scenario === 'ordinary permissions') {
+      for (const tool of ['Bash', 'Write', 'Edit', 'Read', 'EnterPlanMode']) {
+        expect((await $.tool.check({ tool, input: {} })).decision).toBe('ask')
+      }
+      return
+    }
+    if (scenario === 'consumed exit') {
+      await $.tool.call({ tool: 'ExitPlanMode' } as any)
+      expect(exited).toBe(1)
+    } else if (scenario === 'new cycle') {
+      await $.tool.call({ tool: 'EnterPlanMode' } as any)
+    } else {
+      text = `${PLAN}\nChanged requirements.`
+      if (scenario === 'watched edit') {
+        await $.tool.call({ tool: 'Edit', file_path: PLAN_PATH } as any)
+      }
+    }
+    expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).toBe('ask')
+    const held = await $.tool.call({ tool: 'ExitPlanMode' } as any)
+    expect((held as any).deny).toMatch(/plan pane/)
+    expect(exited).toBe(scenario === 'consumed exit' ? 1 : 0)
+    const secondReview = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    await secondReview.press({ key: 'approve' })
+    await secondReview.unmount()
+    expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).toBe('allow')
+    await $.tool.call({ tool: 'ExitPlanMode' } as any)
+    expect(exited).toBe(scenario === 'consumed exit' ? 2 : 1)
+    expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).toBe('ask')
+  })
+}
+
+for (const scenario of ['edit before approval', 'edit before exit', 'unreadable plan', 'failed exit'] as const) {
+  test(`approval fails closed: ${scenario}`, async ($, on) => {
+    let text = PLAN
+    let unreadable = false
+    let exited = 0
+    const prompts: string[] = []
+    on('fs.read', () => {
+      if (unreadable) throw new Error('Plan unavailable')
+      return { value: text }
+    })
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('tool.check', () => ({ decision: 'ask' }))
+    on('tool.call', ($, e) => {
+      if (e.tool === 'ExitPlanMode') exited++
+      return { result: { text: 'result', isError: scenario === 'failed exit' && e.tool === 'ExitPlanMode' } }
+    })
+    on('prompt.submit', ($, e) => {
+      prompts.push(e.text)
+      return { text: e.text }
+    })
+    await $.tool.call({ tool: 'Write', file_path: PLAN_PATH, content: text } as any)
+    await $.tool.call({ tool: 'ExitPlanMode' } as any)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    if (scenario === 'edit before approval') text = `${PLAN}\nUnreviewed change.`
+    await ui.press({ key: 'approve' })
+    await ui.unmount()
+    if (scenario === 'edit before approval') {
+      expect(prompts).toEqual([])
+    } else if (scenario === 'unreadable plan') {
+      unreadable = true
+    } else {
+      expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).toBe('allow')
+      if (scenario === 'edit before exit') text = `${PLAN}\nChanged after permission check.`
+      const result = await $.tool.call({ tool: 'ExitPlanMode' } as any)
+      if (scenario === 'edit before exit') expect((result as any).deny).toMatch(/plan pane/)
+      expect(exited).toBe(scenario === 'failed exit' ? 1 : 0)
+    }
+    expect((await $.tool.check({ tool: 'ExitPlanMode', input: {} })).decision).toBe('ask')
+  })
+}
